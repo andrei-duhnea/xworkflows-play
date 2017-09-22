@@ -1,6 +1,31 @@
+"""
+>>> log.debug = nolog
+>>> rep = Report(title='Report1')
+>>> rep.state.name
+'draft'
+>>> rep.prepare('Larry')
+>>> rep.state.title
+'Ready'
+>>> rep.finish('Curly')
+>>> rep.history
+['Larry: prepare', 'Curly: finish']
+>>> rep.submit('Curly')
+>>> rep.reject('Moe')
+>>> rep.finish('Larry')
+>>> rep.submit('Larry')
+>>> rep.finish('Moe')
+Traceback (most recent call last):
+...
+xworkflows.base.InvalidTransitionError: Transition 'finish' isn't available from state 'submitted'.
+>>> rep.approve('Moe')
+>>> rep.history
+['Larry: prepare', 'Curly: finish', 'Curly: submit', 'Moe: reject', 'Larry: finish', 'Larry: submit', 'Moe: approve']
+"""
 from functools import wraps
 
+import logging
 import structlog
+
 from xworkflows import (
     Workflow,
     WorkflowEnabled,
@@ -10,9 +35,13 @@ from xworkflows import (
     after_transition,
 )
 
+logging.basicConfig(level=logging.WARNING, format='%(message)s')
 log = structlog.get_logger()
 
-KEEP_HISTORY = True
+
+def nolog(*args, **kwargs):
+    """Used for disabling logging during doctest"""
+    pass
 
 
 class ReportWorkflow(Workflow):
@@ -61,7 +90,7 @@ def keep_history(f):
 class Report(WorkflowEnabled):
     state = ReportWorkflow()
 
-    def __init__(self, title, content):
+    def __init__(self, title, content=None):
         self.title = title
         self.content = content
         self.history = []
@@ -110,18 +139,5 @@ class Report(WorkflowEnabled):
 
 
 if __name__ == '__main__':
-    rep1 = Report(title='Report1', content='foo')
-
-    rep1.prepare('Larry')
-    rep1.finish('Curly')
-    rep1.cancel('Curly')
-
-    rep2 = Report(title='Report2', content='foo')
-
-    rep2.prepare('Larry')
-    rep2.finish('Curly')
-    rep2.submit('Curly')
-    rep2.reject('Moe')
-    rep2.finish('Larry')
-    rep2.submit('Larry')
-    rep2.approve('Moe')
+    import doctest
+    doctest.testmod()
