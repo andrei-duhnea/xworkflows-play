@@ -1,6 +1,19 @@
 """
+A short walkthrough of XWorkflows's features.
+
+Adding custom functionality is demonstrated through user-defined transition checks
+and check all/any decorators.
+
+Logging is disabled during doctests
 >>> log.debug = nolog
 >>> log.error = nolog
+
+The states and transitions defined in `ReportWorkflow` are enabled for the `Report` class.
+`Report` instances have title, content and keywords attributes which will be validated by
+a set of transition checks.
+
+We specify checks as a dict of where values are (expression, error message) tuples.
+The report instance will be exposed as `doc` to check locals.
 >>> checks_list = {
 ...    'has_content': (
 ...        'doc.content is not None and len(doc.content) > 0',
@@ -16,12 +29,23 @@
 ...    )
 ... }
 ...
+
+Checks are provided during report creation (TODO: allow dynamic checks)
 >>> rep = Report(title='Report1', keywords=['bar'], checks=checks_list)
+
+New reports start in the 'draft' state.
 >>> rep.state.name
 'draft'
+
+Transitions are available as methods on the report:
 >>> rep.prepare('Larry')
+
+The state has changed after the transition:
 >>> rep.state.title
 'Ready'
+
+User 'Curly' tries to move the report into the 'Complete' state,
+but the `finish` transition has to satisfy a couple of checks:
 >>> rep.finish('Curly')
 Traceback (most recent call last):
 ...
@@ -33,16 +57,35 @@ Traceback (most recent call last):
 Exception: Title too short (at least 8 chars)
 >>> rep.title = 'Report_1'
 >>> rep.finish('Curly')
+
+Finally we're reach the next state
+>>> rep.state.title
+'Complete'
+
+The report's history holds the successful transitions so far:
 >>> rep.history
 ['Larry: prepare', 'Curly: finish']
+
 >>> rep.submit('Curly')
+
+Moe objects to something in the report and sends it back to the 'Ready' state
 >>> rep.reject('Moe')
+>>> rep.state.title
+'Ready'
+
+Larry makes a change and resubmits:
+>>> rep.content = 'foo bar'
 >>> rep.finish('Larry')
 >>> rep.submit('Larry')
+
+Moe mistakenly tries to apply the `finish` transition, but that's not allowed
+from the 'submitted' state:
 >>> rep.finish('Moe')
 Traceback (most recent call last):
 ...
 xworkflows.base.InvalidTransitionError: Transition 'finish' isn't available from state 'submitted'.
+
+Finally, the `approval` transition moves the report in the final state:
 >>> rep.approve('Moe')
 >>> rep.history
 ['Larry: prepare', 'Curly: finish', 'Curly: submit', 'Moe: reject', 'Larry: finish', 'Larry: submit', 'Moe: approve']
@@ -136,7 +179,7 @@ def check_all(*checks):
 def check_any(*checks):
     """Transition decorator, raises an exception if all of the checks fail."""
 
-    def _check_all(f):
+    def _check_any(f):
         @wraps(f)
         def wrapper(instance, *args, **kwargs):
             failures = []
@@ -152,7 +195,7 @@ def check_any(*checks):
 
         return wrapper
 
-    return _check_all
+    return _check_any
 
 
 class Check:
