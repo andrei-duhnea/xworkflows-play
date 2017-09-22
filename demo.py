@@ -6,13 +6,17 @@
 ...        'doc.content is not None and len(doc.content) > 0',
 ...        'Content is empty'
 ...    ),
+...    'has_keywords': (
+...        'doc.keywords',
+...        'No keywords defined'
+...    ),
 ...    'title_size': (
 ...        'len(doc.title) >= 8',
 ...        'Title too short (at least 8 chars)'
 ...    )
 ... }
 ...
->>> rep = Report(title='Report1', checks=checks_list)
+>>> rep = Report(title='Report1', keywords=['bar'], checks=checks_list)
 >>> rep.state.name
 'draft'
 >>> rep.prepare('Larry')
@@ -140,7 +144,7 @@ def check_any(*checks):
                 cond = instance.checks[check]
                 if not cond.verify({'doc': instance}):
                     failures.append((check, cond.error_msg))
-            if failures:
+            if len(failures) == len(checks):
                 log.error('All checks failed', transition=f.__name__, checks=checks)
                 raise Exception(f'All checks failed for {f.__name__}')
             else:
@@ -176,14 +180,16 @@ class Check:
 class Report(WorkflowEnabled):
     state = ReportWorkflow()
 
-    def __init__(self, title, content=None, checks=None):
+    def __init__(self, title, content=None, keywords=None, checks=None):
         self.title = title
         self.content = content
+        self.keywords = keywords or []
         self.history = []
         checks = checks or {}
         self.checks = {name: Check(*spec) for name, spec in checks.items()}
 
     @transition()
+    @check_any('has_content', 'has_keywords')
     @keep_history
     def prepare(self, user):
         pass
