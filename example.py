@@ -12,22 +12,19 @@ The states and transitions defined in `ReportWorkflow` are enabled for the `Repo
 `Report` instances have title, content and keywords attributes which will be validated by
 a set of transition checks.
 
-We specify checks as a dict of where values are (expression, error message) tuples.
+We specify checks as a list of (name, expression, error message) tuples.
 The report instance will be exposed as `doc` to check locals.
->>> checks_list = {
-...    'has_content': (
-...        'doc.content is not None and len(doc.content) > 0',
-...        'Content is empty'
-...    ),
-...    'has_keywords': (
-...        'doc.keywords',
-...        'No keywords defined'
-...    ),
-...    'title_size': (
-...        'len(doc.title) >= 8',
-...        'Title too short (at least 8 chars)'
-...    )
-... }
+>>> checks_list = [
+...    ('has_content',
+...     'doc.content is not None and len(doc.content) > 0',
+...     'Content is empty'),
+...    ('has_keywords',
+...     'doc.keywords',
+...     'No keywords defined'),
+...    ('title_size',
+...     'len(doc.title) >= 8',
+...     'Title too short (at least 8 chars)')
+... ]
 ...
 
 Checks are provided during report creation (TODO: allow dynamic checks)
@@ -97,13 +94,17 @@ import logging
 import structlog
 
 from xworkflows import (
-    Workflow,
     WorkflowEnabled,
     transition,
     before_transition,
     on_enter_state,
     after_transition,
 )
+
+from docflows import load_json_workflows
+from docflows.transitions import keep_history
+from docflows.check import Check, CheckList, check_all, check_any
+
 
 logging.basicConfig(level=logging.WARNING, format='%(message)s')
 log = structlog.get_logger()
@@ -114,110 +115,8 @@ def nolog(*args, **kwargs):
     pass
 
 
-class ReportWorkflow(Workflow):
-    # A list of state names
-    states = (
-        ('draft', 'Draft'),
-        ('ready', 'Ready'),
-        ('complete', 'Complete'),
-        ('submitted', 'Submitted'),
-        ('done', 'Done'),
-        ('approved', 'Approved'),
-        ('cancelled', 'Cancelled'),
-    )
-
-    # A list of transition definitions; items are (name, source states, target).
-    transitions = (
-        ('prepare', 'draft', 'ready'),
-        ('finish', 'ready', 'complete'),
-        ('submit', 'complete', 'submitted'),
-        ('approve', 'submitted', 'approved'),
-        ('reject', 'submitted', 'ready'),
-        ('cancel', ('ready', 'complete'), 'cancelled'),
-    )
-
-    initial_state = 'draft'
-
-    def log_transition(self, *args, **kwargs):
-        # Inactivate built-in transition logging
-        pass
-
-
-def keep_history(f):
-    @wraps(f)
-    def wrapper(instance, *args, **kwargs):
-        if args and kwargs.get('user') is None:
-            user = args[0]
-        elif kwargs.get('user') is not None:
-            user = kwargs['user']
-        else:
-            user = kwargs['user'] = 'UNKNOWN'
-        instance.history.append(f'{user}: {f.__name__}')
-        return f(instance, *args, **kwargs)
-
-    return wrapper
-
-
-def check_all(*checks):
-    """Transition decorator, raises an exception if any of the checks fails."""
-
-    def _check_all(f):
-        @wraps(f)
-        def wrapper(instance, *args, **kwargs):
-            for check in checks:
-                cond = instance.checks[check]
-                if not cond.verify({'doc': instance}):
-                    log.error('Check failed', name=check, error=cond.error_msg)
-                    raise Exception(cond.error_msg)
-            return f(instance, *args, **kwargs)
-
-        return wrapper
-
-    return _check_all
-
-
-def check_any(*checks):
-    """Transition decorator, raises an exception if all of the checks fail."""
-
-    def _check_any(f):
-        @wraps(f)
-        def wrapper(instance, *args, **kwargs):
-            failures = []
-            for check in checks:
-                cond = instance.checks[check]
-                if not cond.verify({'doc': instance}):
-                    failures.append((check, cond.error_msg))
-            if len(failures) == len(checks):
-                log.error('All checks failed', transition=f.__name__, checks=checks)
-                raise Exception(f'All checks failed for {f.__name__}')
-            else:
-                return f(instance, *args, **kwargs)
-
-        return wrapper
-
-    return _check_any
-
-
-class Check:
-    def __init__(self, expr, error_msg=None):
-        self.expr = expr
-        self._expr_obj = None
-        self.error_msg = error_msg
-
-    def compile(self):
-        return compile(self.expr, '<string>', 'eval')
-
-    @property
-    def expr_obj(self):
-        """Caches the compiled expression"""
-        if self._expr_obj is None:
-            self._expr_obj = compile(self.expr, '<string>', 'eval')
-        return self._expr_obj
-
-    def verify(self, *args):
-        """Evaluates the expression.
-        Will pass locals and globals to `eval`"""
-        return eval(self.expr_obj, *args)
+workflows = load_json_workflows('workflows.json')
+ReportWorkflow = workflows['ReportWorkflow']
 
 
 class Report(WorkflowEnabled):
@@ -229,7 +128,7 @@ class Report(WorkflowEnabled):
         self.keywords = keywords or []
         self.history = []
         checks = checks or {}
-        self.checks = {name: Check(*spec) for name, spec in checks.items()}
+        self.checks = CheckList(checks=[Check(*spec) for spec in checks])
 
     @transition()
     @check_any('has_content', 'has_keywords')
@@ -278,5 +177,4 @@ class Report(WorkflowEnabled):
 
 if __name__ == '__main__':
     import doctest
-
     doctest.testmod()

@@ -1,0 +1,22 @@
+{
+    "ReportWorkflow": {
+        "states": [
+            {"name": "draft", "title": "Draft"},
+            {"name": "ready", "title": "Ready"},
+            {"name": "complete", "title": "Complete"},
+            {"name": "submitted", "title": "Submitted"},
+            {"name": "done", "title": "Done"},
+            {"name": "approved", "title": "Approved"},
+            {"name": "cancelled", "title": "Cancelled"}
+        ],
+        "initial_state": "draft",
+        "transitions": [
+            {"name": "prepare", "sources": ["draft"], "target": "ready"},
+            {"name": "finish", "sources": ["ready"], "target": "complete"},
+            {"name": "submit", "sources": ["complete"], "target": "submitted"},
+            {"name": "approve", "sources": ["submitted"], "target": "approved"},
+            {"name": "reject", "sources": ["submitted"], "target": "ready"},
+            {"name": "cancel", "sources": ["ready", "complete"], "target": "cancelled"}
+        ]
+    }
+}
